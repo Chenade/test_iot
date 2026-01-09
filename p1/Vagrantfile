@@ -62,8 +62,10 @@ kub_url = "https://#{server_ip}:#{kub_port}"
 # configures the configuration version (we support older styles for
 # backwards compatibility). Please don't change it unless you know what
 # you're doing.
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'virtualbox'
+
 Vagrant.configure("2") do |config|
-  config.vm.provider vm_provider do |vb|
+  config.vm.provider :virtualbox do |vb|
   #   # Display the VirtualBox GUI when booting the machine
     vb.gui = false
     # Change the default machine folder from the "VBoxManage list systemproperties" command

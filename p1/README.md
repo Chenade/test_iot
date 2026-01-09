@@ -170,6 +170,26 @@ vagrant destroy -f
 - Verify virtualization is enabled in BIOS
 - Ensure no port conflicts with existing VMs
 
+### Issue: Vagrant tries to use libvirt instead of VirtualBox
+**Error**: `Error while connecting to Libvirt` or `Failed to connect socket to '/var/run/libvirt/libvirt-sock'`
+
+**Solution**:
+```bash
+# Option 1: Force VirtualBox provider (quick fix)
+vagrant up --provider=virtualbox
+
+# Option 2: Check if vagrant-libvirt plugin is installed
+vagrant plugin list
+
+# Option 3: Uninstall vagrant-libvirt if you don't need it
+vagrant plugin uninstall vagrant-libvirt
+
+# Option 4: Always specify provider
+vagrant up --provider=virtualbox
+```
+
+The Vagrantfile has been configured to explicitly use `:virtualbox`, but if you still have issues, use the `--provider=virtualbox` flag.
+
 ### Issue: Worker node doesn't join the cluster
 **Solution**:
 - Verify the token file exists at `/vagrant/token/node-token`
