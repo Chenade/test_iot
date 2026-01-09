@@ -71,7 +71,14 @@ vagrant up
 ```bash
 cd p2
 vagrant up
-# Access apps at: app1.com, app2.com, app3.com (configured in /etc/hosts)
+
+# Option A: Configure /etc/hosts (requires sudo)
+sudo sh -c 'echo "192.168.56.110 app1.com app2.com app3.com" >> /etc/hosts'
+
+# Option B: Use curl with Host headers (no sudo needed)
+curl -H "Host: app1.com" http://192.168.56.110
+curl -H "Host: app2.com" http://192.168.56.110
+curl http://192.168.56.110  # app3 (default)
 ```
 
 ---
@@ -140,6 +147,21 @@ Each part uses configuration files to customize the setup:
 **Vagrant fails to start VMs**:
 - Ensure VirtualBox is installed and running
 - Check if virtualization is enabled in BIOS
+
+**Vagrant tries to use libvirt instead of VirtualBox**:
+- If you see "Error while connecting to Libvirt", run:
+  ```bash
+  vagrant up --provider=virtualbox
+  ```
+- Or uninstall vagrant-libvirt: `vagrant plugin uninstall vagrant-libvirt`
+- The Vagrantfiles have been updated to explicitly use VirtualBox
+
+**Connection Refused (ERR_CONNECTION_REFUSED) - Part 2**:
+- Most common: Traefik (Ingress) needs 30-60 seconds to start - wait and retry
+- Check Traefik is running: `vagrant ssh yangchiS -c "sudo kubectl get pods -n kube-system | grep traefik"`
+- Test from inside VM: `vagrant ssh yangchiS -c "curl http://192.168.56.110"`
+- Check network: `ping 192.168.56.110`
+- See detailed troubleshooting in p2/README.md
 
 **K3s installation fails**:
 - Verify network connectivity

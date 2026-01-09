@@ -109,6 +109,66 @@ worker_script: scripts/agent.sh  # Worker provisioning script
 kub_port: 6443                  # Kubernetes API port
 ```
 
+### How Vagrant Provisioning Works
+
+Understanding the automation flow from `vagrant up` to script execution:
+
+```
+vagrant up
+  ↓
+Reads Vagrantfile
+  ↓
+Loads conf/conf.yaml
+  ↓ server_script = "scripts/server.sh"
+  ↓ worker_script = "scripts/agent.sh"
+  ↓ server_ip = "192.168.56.110"
+  ↓ worker_ip = "192.168.56.111"
+  ↓
+Creates VM "yangchiS"
+  ↓
+Provisions Server VM with:
+  → Run: scripts/server.sh
+  → As: root (privileged: true)
+  → With: SERVER_IP=192.168.56.110
+  ↓
+Creates VM "yangchiSW"
+  ↓
+Provisions Worker VM with:
+  → Run: scripts/agent.sh
+  → As: vagrant user
+  → With: WORKER_IP=192.168.56.111, KUB_URL=https://192.168.56.110:6443
+```
+
+**Key Vagrantfile lines:**
+
+**Server (line 84):**
+```ruby
+server.vm.provision "shell", privileged: true, path: server_script, env: { "SERVER_IP" => server_ip }
+```
+
+**Worker (line 91):**
+```ruby
+worker.vm.provision "shell", path: worker_script, env: { "WORKER_IP" => worker_ip, "KUB_URL" => kub_url }
+```
+
+**What this means:**
+- `provision "shell"` → Execute a shell script during VM setup
+- `privileged: true` → Run as root (server only)
+- `path: server_script` → Use the script from conf.yaml
+- `env: { ... }` → Pass environment variables to the script
+
+**When does provisioning run?**
+- ✅ First `vagrant up` (initial creation)
+- ✅ `vagrant provision` (force re-provision)
+- ✅ `vagrant reload --provision` (restart + provision)
+- ❌ `vagrant halt` then `vagrant up` (unless you add `--provision`)
+
+**Order of execution:**
+1. Server VM is created and provisioned first
+2. Server creates and saves node token to `/vagrant/token`
+3. Worker VM is created and provisioned second
+4. Worker reads the token from `/vagrant/token` to join the cluster
+
 ### server.sh Script
 The server provisioning script performs the following:
 1. Creates kubectl alias: `k='sudo kubectl'`

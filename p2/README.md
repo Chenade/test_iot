@@ -106,11 +106,49 @@ This command will:
 - Apply Kubernetes manifests (deployments, services, ingress)
 
 3. Configure your host machine's /etc/hosts file:
+
+**Option A: Using /etc/hosts (requires sudo):**
 ```bash
 # On your host machine (not inside the VM)
 sudo sh -c 'echo "192.168.56.110 app1.com" >> /etc/hosts'
 sudo sh -c 'echo "192.168.56.110 app2.com" >> /etc/hosts'
 sudo sh -c 'echo "192.168.56.110 app3.com" >> /etc/hosts'
+```
+
+**Option B: Without sudo access (alternative methods):**
+
+If you don't have sudo access on your host machine, you can use these alternatives:
+
+**Method 1: Using curl with Host headers (Best for testing/defense):**
+```bash
+# Test app1
+curl -H "Host: app1.com" http://192.168.56.110
+
+# Test app2
+curl -H "Host: app2.com" http://192.168.56.110
+
+# Test app3 (or just use IP directly)
+curl http://192.168.56.110
+```
+
+**Method 2: Browser extension for Host header modification:**
+
+Install a browser extension to modify HTTP headers:
+
+- **Chrome/Edge**: [ModHeader](https://chrome.google.com/webstore/detail/modheader/idgpnmonknjnojddfkpgkljpfnnfcklj)
+- **Firefox**: [Modify Header Value](https://addons.mozilla.org/en-US/firefox/addon/modify-header-value/)
+
+Configure the extension to add a custom header:
+- Header Name: `Host`
+- Header Value: `app1.com` (change to `app2.com` or `app3.com` as needed)
+- Target URL: `http://192.168.56.110`
+
+Then visit `http://192.168.56.110` in your browser, and the extension will make it appear as `app1.com` to the Ingress controller.
+
+**Method 3: Access default backend directly:**
+```bash
+# app3 is the default backend, so just visit the IP
+http://192.168.56.110
 ```
 
 4. Verify the applications are running:
@@ -140,6 +178,52 @@ server_ip: 192.168.56.110       # Server node IP
 server_script: scripts/server.sh # Provisioning script
 kub_port: 6443                  # Kubernetes API port
 ```
+
+### How Vagrant Provisioning Works
+
+Understanding the automation flow from `vagrant up` to script execution:
+
+```
+vagrant up
+  ↓
+Reads Vagrantfile
+  ↓
+Loads confs/vars.yaml
+  ↓ server_script = "scripts/server.sh"
+  ↓ server_ip = "192.168.56.110"
+  ↓
+Creates VM "yangchiS"
+  ↓
+Provisions VM with:
+  → Run: scripts/server.sh
+  → As: root (privileged: true)
+  → With: SERVER_IP=192.168.56.110 (environment variable)
+```
+
+**Key Vagrantfile line (line 72):**
+```ruby
+server.vm.provision "shell", privileged: true, path: server_script, env: { "SERVER_IP" => server_ip }
+```
+
+**What this means:**
+- `provision "shell"` → Execute a shell script during VM setup
+- `privileged: true` → Run as root (with sudo)
+- `path: server_script` → Use the script from vars.yaml (`scripts/server.sh`)
+- `env: { "SERVER_IP" => server_ip }` → Pass SERVER_IP as environment variable
+
+**When does provisioning run?**
+- ✅ First `vagrant up` (initial creation)
+- ✅ `vagrant provision` (force re-provision)
+- ✅ `vagrant reload --provision` (restart + provision)
+- ❌ `vagrant halt` then `vagrant up` (unless you add `--provision`)
+
+**What server.sh does:**
+1. Sets up kubectl alias
+2. Updates system packages
+3. Installs K3s in server mode
+4. Saves node token to `/vagrant/token`
+5. Configures /etc/hosts **inside the VM** (for internal testing)
+6. Applies Kubernetes manifests (deployments, services, ingress)
 
 ### deployment.yaml
 Defines three Kubernetes Deployments:
@@ -226,6 +310,95 @@ vagrant destroy -f
 ```
 
 ## Troubleshooting
+
+### Issue: Vagrant tries to use libvirt instead of VirtualBox
+**Error**: `Error while connecting to Libvirt`
+
+**Solution**:
+```bash
+vagrant up --provider=virtualbox
+```
+
+Or uninstall the vagrant-libvirt plugin:
+```bash
+vagrant plugin uninstall vagrant-libvirt
+```
+
+### Issue: Connection Refused (ERR_CONNECTION_REFUSED)
+**Error**: Browser shows "192.168.56.110 refused to connect" or `ERR_CONNECTION_REFUSED`
+
+**Common Causes & Solutions:**
+
+1. **Traefik still starting up (most common)**
+   - Traefik (Ingress Controller) needs 30-60 seconds to fully start after `vagrant up`
+   - **Solution**: Wait 1-2 minutes and try again
+
+   Check if Traefik is ready:
+   ```bash
+   vagrant ssh yangchiS
+   sudo kubectl get pods -n kube-system | grep traefik
+   # Wait until traefik pod shows 1/1 Running
+   ```
+
+2. **Verify everything is running**
+   ```bash
+   # Check VM is running
+   vagrant status
+
+   # Check pods are running
+   vagrant ssh yangchiS -c "sudo kubectl get pods"
+   # All pods should show Running
+
+   # Check Ingress is configured
+   vagrant ssh yangchiS -c "sudo kubectl get ingress"
+   # Should show ADDRESS: 192.168.56.110
+
+   # Check Traefik service
+   vagrant ssh yangchiS -c "sudo kubectl get svc -A | grep traefik"
+   # Should show LoadBalancer with 192.168.56.110
+   ```
+
+3. **Test from inside the VM first**
+   ```bash
+   vagrant ssh yangchiS
+   curl http://192.168.56.110
+   # Should return HTML from app3 (default backend)
+   ```
+
+   If this works but your browser doesn't, it's a host-to-VM networking issue.
+
+4. **Check network connectivity**
+   ```bash
+   # From your host machine
+   ping 192.168.56.110
+   # Should get responses
+   ```
+
+   If ping fails:
+   - Check VirtualBox Host-Only network adapter is enabled
+   - On Linux: Check vboxnet0 interface exists: `ip a | grep vboxnet`
+   - Restart the VM: `vagrant reload`
+
+5. **Firewall blocking connections**
+   ```bash
+   # On Linux, check if firewall is blocking
+   sudo iptables -L | grep 192.168.56
+
+   # Temporarily disable firewall to test (Ubuntu/Debian)
+   sudo ufw status
+   sudo ufw allow from 192.168.56.0/24
+   ```
+
+6. **VM network interface not configured**
+   ```bash
+   vagrant ssh yangchiS -c "ip a show eth1"
+   # Should show eth1 with IP 192.168.56.110
+   ```
+
+   If eth1 is missing or has wrong IP:
+   ```bash
+   vagrant reload
+   ```
 
 ### Issue: Cannot access app1.com, app2.com, or app3.com
 **Solution**:
@@ -462,7 +635,12 @@ A: The Ingress Controller (Traefik) reads the `Host` header from incoming HTTP r
 A: The subject specifies 3 replicas for app2 to demonstrate load balancing and high availability concepts. It shows that Kubernetes can manage multiple instances of the same application and distribute traffic among them automatically.
 
 **Q: What happens if I don't configure /etc/hosts?**
-A: Without /etc/hosts entries, your browser won't know that app1.com, app2.com, and app3.com should resolve to 192.168.56.110. You'd need to use a DNS server or continue accessing only by IP (which would show app3, the default backend).
+A: Without /etc/hosts entries, your browser won't know that app1.com, app2.com, and app3.com should resolve to 192.168.56.110. However, you have excellent alternatives:
+  - Use curl with Host headers: `curl -H "Host: app1.com" http://192.168.56.110`
+  - Use a browser extension like ModHeader to set custom Host headers
+  - Access app3 directly via IP (it's the default backend): `http://192.168.56.110`
+
+  The curl method is actually preferred for defense as it clearly demonstrates your understanding of how Ingress routing works!
 
 **Q: Can I use different application images?**
 A: Yes! The subject says "web applications of your choice." You can use any containerized web application. The paulbouwer/hello-kubernetes image is just a simple example that displays the pod name and custom messages.
@@ -524,13 +702,31 @@ During your evaluation, be prepared to:
    sudo kubectl get services
    ```
 
-5. **Access each application from your browser:**
-   - http://app1.com
-   - http://app2.com
-   - http://app3.com
+5. **Access each application:**
+
+   **If you have /etc/hosts configured:**
+   - Browser: http://app1.com
+   - Browser: http://app2.com
+   - Browser: http://app3.com
+
+   **If you DON'T have sudo access (alternative - actually better for demonstrating understanding):**
+   ```bash
+   # Show app1
+   curl -H "Host: app1.com" http://192.168.56.110
+
+   # Show app2
+   curl -H "Host: app2.com" http://192.168.56.110
+
+   # Show app3 (default)
+   curl http://192.168.56.110
+
+   # Demonstrate app2 load balancing across 3 replicas
+   for i in {1..10}; do curl -s -H "Host: app2.com" http://192.168.56.110 | grep -i "pod\|app2"; done
+   ```
 
 6. **Demonstrate default backend:**
    - http://192.168.56.110 (should show app3)
+   - This works because app3 is configured as the default backend
 
 7. **Explain the architecture:**
    - How Ingress routes traffic
