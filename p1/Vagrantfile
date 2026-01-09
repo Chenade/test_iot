@@ -66,8 +66,8 @@ Vagrant.configure("2") do |config|
   config.vm.provider vm_provider do |vb|
   #   # Display the VirtualBox GUI when booting the machine
     vb.gui = false
-    #Change le default machine folder de la commande "VBoxManage list systemproperties"
-    #Pour remettre par defaut a 42 : VBoxManage setproperty machinefolder $HOME/Virtualbox\ Vms
+    # Change the default machine folder from the "VBoxManage list systemproperties" command
+    # To reset to default at 42: VBoxManage setproperty machinefolder $HOME/Virtualbox\ Vms
     # vb.customize ["setproperty", "machinefolder", "#{ENV['HOME']}/"]
   
   #   # Customize the amount of memory on the VM:

@@ -46,10 +46,10 @@ echo "Deployment of YAML files..."
 
 #!/bin/bash
 
-# Récupère le dossier parent du script (c'est-à-dire le dossier p3)
+# Get the parent folder of the script (i.e., the p3 folder)
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Appliquer les fichiers YAML
+# Apply YAML files
 kubectl apply -f "$BASE_DIR/conf/deployment.yaml"
 kubectl apply -f "$BASE_DIR/conf/service.yaml"
 kubectl apply -f "$BASE_DIR/conf/argo-application.yaml"
