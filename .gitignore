@@ -21,6 +21,9 @@ token/
 kubeconfig
 kubeconfig.yaml
 *.kubeconfig
+kubectl
+k3d
+argocd
 
 # SSH keys (if any are generated)
 *.pem
