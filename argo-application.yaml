@@ -6,8 +6,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: "https://github.com/Chenade/test_iot"
-    targetRevision: HEAD
+    repoURL: "https://github.com/Chenade/test_iot.git"
+    targetRevision: main
     path: .
   destination:
     server: https://kubernetes.default.svc
@@ -16,3 +16,11 @@ spec:
     automated:
       selfHeal: true
       prune: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
